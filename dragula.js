@@ -6,6 +6,8 @@ var classes = require('./classes');
 var doc = document;
 var documentElement = doc.documentElement;
 var _autoScrollingInterval; // reference to auto scrolling
+var _horizontalScrollContainer;
+var _verticalScrollContainer;
 // A simple requestAnimationFrame polyfill
 var raf = window.requestAnimationFrame || function(callback){ return setTimeout(callback, 1000 / 60); };
 var caf = window.cancelAnimationFrame || function(cafID){ clearTimeout(cafID); };
@@ -45,6 +47,8 @@ function dragula (initialContainers, options) {
   if (o.mirrorContainer === void 0) { o.mirrorContainer = doc.body; }
   if (o.useMirror === void 0) { o.useMirror = never; }
   if (o.scrollEdge === void 0) { o.scrollEdge = 36; }
+  if (o.horizontalScrollContainerClass === void 0) { o.horizontalScrollContainerClass = ''; }
+  if (o.verticalScrollContainerClass === void 0) { o.verticalScrollContainerClass = ''}
 
   var drake = emitter({
     containers: o.containers,
@@ -406,6 +410,7 @@ function dragula (initialContainers, options) {
       if (_copy && parent) {
         parent.removeChild(item);
       }
+      startScroll(_item, elementBehindCursor, e, o);
       return;
     }
     if (
@@ -421,7 +426,7 @@ function dragula (initialContainers, options) {
     function over () { if (changed) { moved('over'); } }
     function out () { if (_lastDropTarget) { moved('out'); } }
 
-    startScroll(_item, e, o);
+    startScroll(_item, elementBehindCursor, e, o);
   }
 
   function spillOver (el) {
@@ -623,20 +628,39 @@ function getCoord (coord, e) {
   return host[coord];
 }
 
-function getScrollContainer(node) {
-  if (node === null) { return null; }
-  // NOTE: Manually calculating height because IE's `clientHeight` isn't always
+function getScrollContainers(node, options) {
+
+  if (node === null || (_verticalScrollContainer && _horizontalScrollContainer)) {
+    return {
+      horizontal: _horizontalScrollContainer,
+      vertical: _verticalScrollContainer
+    };
+  }
+
+  // NOTE: Manually calculating height and width because IE's `clientHeight` isn't always
   // reliable.
-  var nodeOuterHeight = parseFloat(window.getComputedStyle(node).getPropertyValue('height')) +
-    parseFloat(window.getComputedStyle(node).getPropertyValue('padding-top')) +
-    parseFloat(window.getComputedStyle(node).getPropertyValue('padding-bottom'));
-  if (node.scrollHeight > Math.ceil(nodeOuterHeight)) { return node; }
+  if (node.classList.contains(options.verticalScrollContainerClass)) {
+    var nodeOuterHeight = parseFloat(window.getComputedStyle(node).getPropertyValue('height')) +
+      parseFloat(window.getComputedStyle(node).getPropertyValue('padding-top')) +
+      parseFloat(window.getComputedStyle(node).getPropertyValue('padding-bottom'));
+    if (node.scrollHeight > Math.ceil(nodeOuterHeight)) { _verticalScrollContainer = node; }
+  }
+
+  if (node.classList.contains(options.horizontalScrollContainerClass)) {
+    var nodeOuterWidth = parseFloat(window.getComputedStyle(node).getPropertyValue('width')) +
+      parseFloat(window.getComputedStyle(node).getPropertyValue('padding-left')) +
+      parseFloat(window.getComputedStyle(node).getPropertyValue('padding-right'));
+    if (node.scrollWidth > Math.ceil(nodeOuterWidth)) { _horizontalScrollContainer = node }
+  }
 
   var REGEX_BODY_HTML = new RegExp('(body|html)', 'i');
 
-  if (!REGEX_BODY_HTML.test(node.parentNode.tagName)) { return getScrollContainer(node.parentNode); }
+  if (!REGEX_BODY_HTML.test(node.parentNode.tagName)) { return getScrollContainers(node.parentNode, options); }
 
-  return null;
+  return {
+      horizontal: _horizontalScrollContainer,
+      vertical: _verticalScrollContainer
+    };
 }
 
 function startAutoScrolling(node, amount, direction) {
@@ -647,11 +671,12 @@ function startAutoScrolling(node, amount, direction) {
   return node[direction] += (amount * 0.25);
 }
 
-function startScroll(item, event, options) {
+function startScroll(item, nodeBehindCursor, event, options) {
   var scrollingElement = null;
   var scrollEdge = options.scrollEdge;
   var scrollSpeed = 20;
-  var scrollContainer = getScrollContainer(item);
+  resetScrollContainers();
+  var scrollContainers = getScrollContainers(nodeBehindCursor, options);
   var pageX = null;
   var pageY = null;
 
@@ -665,43 +690,46 @@ function startScroll(item, event, options) {
 
   caf(_autoScrollingInterval);
 
-  // If a container contains the list that is scrollable
-  if (scrollContainer) {
-
-    // Scrolling vertically
+  // Scrolling vertically
+  // NOTE: Using `window.pageYOffset` here because IE doesn't have `window.scrollY`.
+  if (scrollContainers.vertical) {
+    var scrollContainer = scrollContainers.vertical;
     if (pageY - getOffset(scrollContainer).top < scrollEdge) {
       startAutoScrolling(scrollContainer, -scrollSpeed, 'scrollTop');
     } else if ((getOffset(scrollContainer).top + scrollContainer.getBoundingClientRect().height) - pageY < scrollEdge) {
       startAutoScrolling(scrollContainer, scrollSpeed, 'scrollTop');
     }
-
-    // Scrolling horizontally
-    if (pageX - scrollContainer.getBoundingClientRect().left < scrollEdge) {
-      startAutoScrolling(scrollContainer, -scrollSpeed, 'scrollLeft');
-    } else if ((getOffset(scrollContainer).left + scrollContainer.getBoundingClientRect().width) - pageX < scrollEdge) {
-      startAutoScrolling(scrollContainer, scrollSpeed, 'scrollLeft');
-    }
-
-  // If the window contains the list
-  } else {
+  }else{
     scrollingElement = document.scrollingElement || document.documentElement || document.body;
-
-    // Scrolling vertically
-    // NOTE: Using `window.pageYOffset` here because IE doesn't have `window.scrollY`.
     if ((pageY - window.pageYOffset) < scrollEdge) {
       startAutoScrolling(scrollingElement, -scrollSpeed, 'scrollTop');
     } else if ((window.innerHeight - (pageY - window.pageYOffset)) < scrollEdge) {
       startAutoScrolling(scrollingElement, scrollSpeed, 'scrollTop');
     }
+  }
 
-    // Scrolling horizontally
-    // NOTE: Using `window.pageXOffset` here because IE doesn't have `window.scrollX`.
+  // Scrolling horizontally
+  // NOTE: Using `window.pageXOffset` here because IE doesn't have `window.scrollX`.
+  if (scrollContainers.horizontal) {
+    var scrollContainer = scrollContainers.horizontal;
+    if (pageX - scrollContainer.getBoundingClientRect().left < scrollEdge) {
+      startAutoScrolling(scrollContainer, -scrollSpeed, 'scrollLeft');
+    } else if ((getOffset(scrollContainer).left + scrollContainer.getBoundingClientRect().width) - pageX < scrollEdge) {
+      startAutoScrolling(scrollContainer, scrollSpeed, 'scrollLeft');
+    }
+  } else {
+    scrollingElement = document.scrollingElement || document.documentElement || document.body;
     if ((pageX - window.pageXOffset) < scrollEdge) {
       startAutoScrolling(scrollingElement, -scrollSpeed, 'scrollLeft');
     } else if ((window.innerWidth - (pageX - window.pageXOffset)) < scrollEdge) {
       startAutoScrolling(scrollingElement, scrollSpeed, 'scrollLeft');
     }
   }
+}
+
+function resetScrollContainers() {
+  if(_horizontalScrollContainer) { _horizontalScrollContainer = null };
+  if(_verticalScrollContainer) { _verticalScrollContainer = null };
 }
 
 module.exports = dragula;
