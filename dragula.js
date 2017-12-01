@@ -42,6 +42,7 @@ function dragula (initialContainers, options) {
   if (o.copySortSource === void 0) { o.copySortSource = false; }
   if (o.revertOnSpill === void 0) { o.revertOnSpill = false; }
   if (o.removeOnSpill === void 0) { o.removeOnSpill = false; }
+  if (o.alwaysAcceptInitial === void 0) { o.alwaysAcceptInitial = true}
   if (o.direction === void 0) { o.direction = 'vertical'; }
   if (o.ignoreInputTextSelection === void 0) { o.ignoreInputTextSelection = true; }
   if (o.mirrorContainer === void 0) { o.mirrorContainer = doc.body; }
@@ -359,7 +360,7 @@ function dragula (initialContainers, options) {
       var immediate = getImmediateChild(target, elementBehindCursor);
       var reference = getReference(target, immediate, clientX, clientY);
       var initial = isInitialPlacement(target, reference);
-      if (initial) {
+      if (initial &&  o.alwaysAcceptInitial) {
         return true; // should always be able to drop it right back where it was
       }
       return o.accepts(_item, target, _source, reference, {clientX: clientX, clientY: clientY});
@@ -655,7 +656,7 @@ function getScrollContainers(node, options) {
 
   var REGEX_BODY_HTML = new RegExp('(body|html)', 'i');
 
-  if (!REGEX_BODY_HTML.test(node.parentNode.tagName)) { return getScrollContainers(node.parentNode, options); }
+  if (node.parentNode && !REGEX_BODY_HTML.test(node.parentNode.tagName)) { return getScrollContainers(node.parentNode, options); }
 
   return {
       horizontal: _horizontalScrollContainer,
